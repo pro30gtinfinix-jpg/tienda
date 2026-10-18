@@ -981,6 +981,50 @@ function renderVentas() {
 }
 
 // ===============================================
+// ADMIN: VISTA DE LA BASE DE DATOS (solo lectura)
+// ===============================================
+var temporizadorBD = null;
+
+function tablaDesdeFilas(titulo, filas) {
+    var html = '<h6 class="fw-bold mt-4">' + titulo + ' <span class="badge bg-secondary">' + filas.length + ' filas</span></h6>';
+    if (filas.length === 0) {
+        return html + '<p class="text-muted small">Tabla vacía.</p>';
+    }
+    var columnas = Object.keys(filas[0]);
+    html += '<div class="table-responsive"><table class="table table-sm table-bordered small tabla-bd"><thead><tr>';
+    for (var c = 0; c < columnas.length; c++) {
+        html += '<th>' + columnas[c] + '</th>';
+    }
+    html += '</tr></thead><tbody>';
+    for (var f = 0; f < filas.length; f++) {
+        html += '<tr>';
+        for (var c2 = 0; c2 < columnas.length; c2++) {
+            var valor = filas[f][columnas[c2]];
+            if (valor === null) { valor = '<span class="text-muted">NULL</span>'; }
+            else if (String(valor).length > 40) { valor = String(valor).substring(0, 40) + '...'; }
+            html += '<td>' + valor + '</td>';
+        }
+        html += '</tr>';
+    }
+    return html + '</tbody></table></div>';
+}
+
+function cargarVistaBD() {
+    fetch("api/vista_bd.php?clave=" + encodeURIComponent(ADMIN_CLAVE))
+        .then(function (respuesta) { return respuesta.json(); })
+        .then(function (datos) {
+            document.getElementById("contenidoBD").innerHTML =
+                tablaDesdeFilas("productos", datos.productos) +
+                tablaDesdeFilas("pedidos", datos.pedidos) +
+                tablaDesdeFilas("detalle_pedido", datos.detalle_pedido);
+        });
+}
+
+function descargarBaseDatos() {
+    window.location.href = "api/vista_bd.php?descargar=1&clave=" + encodeURIComponent(ADMIN_CLAVE);
+}
+
+// ===============================================
 // INICIO: se ejecuta cuando la página termina de cargar
 // ===============================================
 document.addEventListener("DOMContentLoaded", function () {
