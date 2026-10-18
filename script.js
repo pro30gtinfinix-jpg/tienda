@@ -82,6 +82,26 @@ function urlImagen(url) {
     return url;
 }
 
+// Si una imagen de Drive no carga, se prueban otras 2 formas de pedirla
+// y, si ninguna funciona, se muestra un cuadro gris con "Sin imagen".
+function errorImagen(img) {
+    var intento = Number(img.getAttribute("data-intento") || 0);
+    var partes = img.src.match(/[?&]id=([^&]+)/) || img.src.match(/googleusercontent\.com\/d\/([^=?\/]+)/);
+
+    if (partes && intento < 2) {
+        img.setAttribute("data-intento", intento + 1);
+        if (intento === 0) {
+            img.src = "https://lh3.googleusercontent.com/d/" + partes[1] + "=w800";
+        } else {
+            img.src = "https://drive.google.com/uc?export=view&id=" + partes[1];
+        }
+        return;
+    }
+
+    img.onerror = null;
+    img.src = "data:image/svg+xml;utf8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='400' height='400'><rect width='400' height='400' fill='#e8e2f0'/><text x='50%' y='50%' fill='#6B2FA8' font-family='sans-serif' font-size='24' text-anchor='middle'>Sin imagen</text></svg>");
+}
+
 // Trae todos los pedidos (con su detalle de productos) desde pedidos.php
 function cargarPedidos(alTerminar) {
     fetch("api/pedidos.php")
@@ -181,7 +201,7 @@ function renderProductos() {
 
             var html = '<div class="col-6 col-lg-3">';
             html += '<div class="card tarjeta-producto position-relative">';
-            html += '<img src="' + urlImagen(p.imagen) + '" alt="' + p.nombre + '">';
+            html += '<img src="' + urlImagen(p.imagen) + '" referrerpolicy="no-referrer" onerror="errorImagen(this)" alt="' + p.nombre + '">';
             html += '<div class="card-body">';
             html += '<h6 class="fw-bold mb-1">' + p.nombre + '</h6>';
             html += '<p class="small text-muted mb-1">' + p.descripcion + '</p>';
@@ -194,9 +214,21 @@ function renderProductos() {
         }
     }
 
-    if (encontrados === 0) {
+    var vacio = document.getElementById("catalogoVacio");
+    var hayDisponibles = false;
+    for (var d = 0; d < productos.length; d++) {
+        if (productos[d].estadoInventario === "Disponible") { hayDisponibles = true; }
+    }
+
+    if (!hayDisponibles) {
+        // No hay ninguna prenda cargada o disponible
+        vacio.classList.remove("d-none");
+        sinResultados.classList.add("d-none");
+    } else if (encontrados === 0) {
+        vacio.classList.add("d-none");
         sinResultados.classList.remove("d-none");
     } else {
+        vacio.classList.add("d-none");
         sinResultados.classList.add("d-none");
     }
 }
@@ -258,7 +290,7 @@ function renderCarrito() {
         totalItems = totalItems + carrito[i].cantidad;
 
         var html = '<div class="d-flex align-items-center gap-2 mb-3">';
-        html += '<img src="' + urlImagen(producto.imagen) + '" style="width:55px;height:65px;object-fit:cover;border-radius:8px;">';
+        html += '<img src="' + urlImagen(producto.imagen) + '" referrerpolicy="no-referrer" onerror="errorImagen(this)" style="width:55px;height:65px;object-fit:cover;border-radius:8px;">';
         html += '<div class="flex-grow-1">';
         html += '<p class="mb-0 small fw-bold">' + producto.nombre + '</p>';
         html += '<p class="mb-1 small text-muted">Bs ' + producto.precioVenta.toFixed(2) + '</p>';
@@ -508,7 +540,7 @@ function renderTablaProductos() {
         }
 
         var fila = "<tr>";
-        fila += "<td><img src='" + urlImagen(p.imagen) + "'></td>";
+        fila += "<td><img src='" + urlImagen(p.imagen) + "' referrerpolicy='no-referrer' onerror='errorImagen(this)'></td>";
         fila += "<td>" + p.nombre + "</td>";
         fila += "<td>Bs " + p.precioCompra.toFixed(2) + "</td>";
         fila += "<td>Bs " + p.precioVenta.toFixed(2) + "</td>";
@@ -748,7 +780,7 @@ function renderReservas() {
             cantidad++;
 
             var html = '<div class="col-6 col-lg-3"><div class="card tarjeta-admin">';
-            html += '<img src="' + urlImagen(item.imagen) + '" alt="' + item.nombre + '">';
+            html += '<img src="' + urlImagen(item.imagen) + '" referrerpolicy="no-referrer" onerror="errorImagen(this)" alt="' + item.nombre + '">';
             html += '<div class="card-body">';
             html += '<h6 class="fw-bold mb-1">' + item.nombre + '</h6>';
             html += '<p class="small text-muted mb-1">Talla ' + item.talla + ' - ' + item.color + '</p>';
@@ -849,7 +881,7 @@ function renderVentas() {
         var item = vendidas[i].item;
 
         var html = '<div class="col-6 col-lg-3"><div class="card tarjeta-admin">';
-        html += '<img src="' + urlImagen(item.imagen) + '" alt="' + item.nombre + '">';
+        html += '<img src="' + urlImagen(item.imagen) + '" referrerpolicy="no-referrer" onerror="errorImagen(this)" alt="' + item.nombre + '">';
         html += '<div class="card-body">';
         html += '<h6 class="fw-bold mb-1">' + item.nombre + '</h6>';
         html += '<p class="small text-muted mb-1">Talla ' + item.talla + ' - ' + item.color + '</p>';
@@ -938,6 +970,50 @@ function renderVentas() {
 }
 
 // ===============================================
+// ADMIN: VISTA DE LA BASE DE DATOS (solo lectura)
+// ===============================================
+var temporizadorBD = null;
+
+function tablaDesdeFilas(titulo, filas) {
+    var html = '<h6 class="fw-bold mt-4">' + titulo + ' <span class="badge bg-secondary">' + filas.length + ' filas</span></h6>';
+    if (filas.length === 0) {
+        return html + '<p class="text-muted small">Tabla vacía.</p>';
+    }
+    var columnas = Object.keys(filas[0]);
+    html += '<div class="table-responsive"><table class="table table-sm table-bordered small tabla-bd"><thead><tr>';
+    for (var c = 0; c < columnas.length; c++) {
+        html += '<th>' + columnas[c] + '</th>';
+    }
+    html += '</tr></thead><tbody>';
+    for (var f = 0; f < filas.length; f++) {
+        html += '<tr>';
+        for (var c2 = 0; c2 < columnas.length; c2++) {
+            var valor = filas[f][columnas[c2]];
+            if (valor === null) { valor = '<span class="text-muted">NULL</span>'; }
+            else if (String(valor).length > 40) { valor = String(valor).substring(0, 40) + '...'; }
+            html += '<td>' + valor + '</td>';
+        }
+        html += '</tr>';
+    }
+    return html + '</tbody></table></div>';
+}
+
+function cargarVistaBD() {
+    fetch("api/vista_bd.php?clave=" + encodeURIComponent(ADMIN_CLAVE))
+        .then(function (respuesta) { return respuesta.json(); })
+        .then(function (datos) {
+            document.getElementById("contenidoBD").innerHTML =
+                tablaDesdeFilas("productos", datos.productos) +
+                tablaDesdeFilas("pedidos", datos.pedidos) +
+                tablaDesdeFilas("detalle_pedido", datos.detalle_pedido);
+        });
+}
+
+function descargarBaseDatos() {
+    window.location.href = "api/vista_bd.php?descargar=1&clave=" + encodeURIComponent(ADMIN_CLAVE);
+}
+
+// ===============================================
 // INICIO: se ejecuta cuando la página termina de cargar
 // ===============================================
 document.addEventListener("DOMContentLoaded", function () {
@@ -961,6 +1037,17 @@ document.addEventListener("DOMContentLoaded", function () {
     // clientes (o liberados por el admin) estén siempre actualizados.
     document.getElementById("modalPedido").addEventListener("show.bs.modal", function () {
         cargarPedidos(actualizarHorarios);
+    });
+
+    // La pestaña "Base de datos" se refresca sola cada 3 segundos
+    // mientras está abierta, para ver los cambios en vivo.
+    var pestanaBD = document.getElementById("btnTabBD");
+    pestanaBD.addEventListener("shown.bs.tab", function () {
+        cargarVistaBD();
+        temporizadorBD = setInterval(cargarVistaBD, 3000);
+    });
+    pestanaBD.addEventListener("hidden.bs.tab", function () {
+        clearInterval(temporizadorBD);
     });
 
     document.getElementById("buscador").addEventListener("input", renderProductos);

@@ -1,6 +1,9 @@
 # Imagen oficial de PHP con Apache (ya incluye SQLite/PDO)
 FROM php:8.3-apache
 
+# Soporte para PostgreSQL (la base de datos de Render)
+RUN apt-get update && apt-get install -y libpq-dev && docker-php-ext-install pdo_pgsql && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /var/www/html
 COPY . /var/www/html
 

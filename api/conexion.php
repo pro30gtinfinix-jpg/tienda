@@ -1,42 +1,82 @@
 <?php
 // =====================================================
 // conexion.php
-// Abre la conexión hacia el archivo .db usando PDO.
-// Todos los demás archivos PHP incluyen este archivo
-// con require "conexion.php"; para obtener $conexion.
+// Abre la conexión con la base de datos usando PDO.
+// - Si existe la variable DATABASE_URL (Render / Neon) se usa
+//   PostgreSQL: los datos quedan guardados de forma permanente
+//   fuera del servidor web.
+// - Si no existe, se usa SQLite (archivo .db), por ejemplo en
+//   XAMPP en tu computador.
+// Todos los demás archivos PHP incluyen este con
+// require "conexion.php"; para obtener $conexion.
 // =====================================================
 
-// Por defecto la base está en /database/gengar_studio.db. Si el hosting
-// define la variable DB_PATH (por ejemplo en Render, apuntando a un
-// disco persistente), se usa esa ruta en su lugar.
-$rutaBaseDatos = getenv("DB_PATH") ? getenv("DB_PATH") : __DIR__ . "/../database/gengar_studio.db";
+$urlBase = getenv("DATABASE_URL");
+$esPostgres = ($urlBase !== false && $urlBase !== "");
+$rutaBaseDatos = "";
+
+// Fecha y hora actuales (hora de Bolivia) escritas en SQL,
+// según el tipo de base de datos.
+function sqlAhora() {
+    global $esPostgres;
+    if ($esPostgres) {
+        return "to_char(now() AT TIME ZONE 'America/La_Paz', 'YYYY-MM-DD HH24:MI:SS')";
+    }
+    return "datetime('now', 'localtime')";
+}
 
 try {
-    // Si el archivo .db todavía no existe (primer arranque en un servidor
-    // nuevo), se crea solo a partir de database/esquema.sql.
-    $esNueva = !file_exists($rutaBaseDatos) || filesize($rutaBaseDatos) === 0;
-    if ($esNueva && !is_dir(dirname($rutaBaseDatos))) {
-        mkdir(dirname($rutaBaseDatos), 0777, true);
-    }
+    if ($esPostgres) {
+        $partes = parse_url($urlBase);
+        $dsn = "pgsql:host=" . $partes["host"]
+             . ";port=" . (isset($partes["port"]) ? $partes["port"] : 5432)
+             . ";dbname=" . ltrim($partes["path"], "/");
+        $ssl = "prefer";
+        if (isset($partes["query"])) {
+            parse_str($partes["query"], $opciones);
+            if (isset($opciones["sslmode"])) { $ssl = $opciones["sslmode"]; }
+        } else if (strpos($partes["host"], ".") !== false) {
+            $ssl = "require"; // dirección externa (con dominio): conexión cifrada
+        }
+        // connect_timeout: Neon se "duerme" tras 5 min sin uso y tarda
+        // un instante en despertar; se le da tiempo para responder.
+        $dsn .= ";sslmode=" . $ssl . ";connect_timeout=15";
 
-    $conexion = new PDO("sqlite:" . $rutaBaseDatos);
-    $conexion->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $conexion = new PDO($dsn, urldecode($partes["user"]), urldecode($partes["pass"]));
+        $conexion->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-    if ($esNueva) {
-        $conexion->exec(file_get_contents(__DIR__ . "/../database/esquema.sql"));
-    }
+        // Primera vez: si las tablas no existen, se crean solas.
+        $existe = $conexion->query("SELECT to_regclass('public.productos')")->fetchColumn();
+        if ($existe === null || $existe === false) {
+            $conexion->exec(file_get_contents(__DIR__ . "/../database/esquema_postgres.sql"));
+        }
+    } else {
+        // Por defecto la base está en /database/gengar_studio.db
+        $rutaBaseDatos = getenv("DB_PATH") ? getenv("DB_PATH") : __DIR__ . "/../database/gengar_studio.db";
 
-    // Si la base de datos es antigua y todavía no tiene la columna
-    // "precio_final" en detalle_pedido, se agrega sola (una única vez).
-    $columnas = $conexion->query("PRAGMA table_info(detalle_pedido)")->fetchAll(PDO::FETCH_ASSOC);
-    $existe = false;
-    for ($i = 0; $i < count($columnas); $i++) {
-        if ($columnas[$i]["name"] === "precio_final") { $existe = true; }
+        $esNueva = !file_exists($rutaBaseDatos) || filesize($rutaBaseDatos) === 0;
+        if ($esNueva && !is_dir(dirname($rutaBaseDatos))) {
+            mkdir(dirname($rutaBaseDatos), 0777, true);
+        }
+
+        $conexion = new PDO("sqlite:" . $rutaBaseDatos);
+        $conexion->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+        if ($esNueva) {
+            $conexion->exec(file_get_contents(__DIR__ . "/../database/esquema.sql"));
+        }
+
+        // Bases antiguas: agregar la columna precio_final si falta
+        $columnas = $conexion->query("PRAGMA table_info(detalle_pedido)")->fetchAll(PDO::FETCH_ASSOC);
+        $tiene = false;
+        for ($i = 0; $i < count($columnas); $i++) {
+            if ($columnas[$i]["name"] === "precio_final") { $tiene = true; }
+        }
+        if (!$tiene && count($columnas) > 0) {
+            $conexion->exec("ALTER TABLE detalle_pedido ADD COLUMN precio_final REAL");
+        }
     }
-    if (!$existe && count($columnas) > 0) {
-        $conexion->exec("ALTER TABLE detalle_pedido ADD COLUMN precio_final REAL");
-    }
-} catch (PDOException $error) {
+} catch (Exception $error) {
     header("Content-Type: application/json");
     http_response_code(500);
     echo json_encode(array("error" => "No se pudo conectar a la base de datos: " . $error->getMessage()));

@@ -81,7 +81,7 @@ else if ($metodo === "POST") {
 
     $sqlPedido = "INSERT INTO pedidos (cliente, whatsapp, lugar, fecha, hora, total, estado)
                   VALUES (:cliente, :whatsapp, :lugar, :fecha, :hora, :total, 'Pendiente')";
-    $consultaPedido = $conexion->prepare($sqlPedido);
+    $consultaPedido = $conexion->prepare($sqlPedido . " RETURNING id");
     $consultaPedido->execute(array(
         ":cliente" => $datos["cliente"],
         ":whatsapp" => $datos["whatsapp"],
@@ -91,7 +91,8 @@ else if ($metodo === "POST") {
         ":total" => $datos["total"]
     ));
 
-    $idPedido = $conexion->lastInsertId();
+    $idPedido = $consultaPedido->fetchColumn();
+    $consultaPedido->closeCursor(); // cerrar la consulta antes de seguir (necesario en SQLite)
 
     for ($i = 0; $i < count($productosPedido); $i++) {
         $item = $productosPedido[$i];
@@ -160,7 +161,7 @@ else if ($metodo === "PUT") {
 
     $conexion->beginTransaction();
 
-    $sqlPedido = "UPDATE pedidos SET estado = 'Pagado', fecha_pago = datetime('now', 'localtime') WHERE id = :id AND estado = 'Pendiente'";
+    $sqlPedido = "UPDATE pedidos SET estado = 'Pagado', fecha_pago = " . sqlAhora() . " WHERE id = :id AND estado = 'Pendiente'";
     $consultaPedido = $conexion->prepare($sqlPedido);
     $consultaPedido->execute(array(":id" => $datos["id"]));
 

@@ -30,7 +30,9 @@ else if ($metodo === "POST") {
     $sql = "INSERT INTO productos (nombre, descripcion, categoria, talla, color, precio_compra, precio_venta, estado_inventario, imagen)
             VALUES (:nombre, :descripcion, :categoria, :talla, :color, :precio_compra, :precio_venta, 'Disponible', :imagen)";
 
-    $consulta = $conexion->prepare($sql);
+    // RETURNING id devuelve el número del producto nuevo (funciona en
+    // PostgreSQL y en SQLite 3.35 o más nuevo).
+    $consulta = $conexion->prepare($sql . " RETURNING id");
     $consulta->execute(array(
         ":nombre" => $datos["nombre"],
         ":descripcion" => $datos["descripcion"],
@@ -42,7 +44,9 @@ else if ($metodo === "POST") {
         ":imagen" => $datos["imagen"]
     ));
 
-    echo json_encode(array("id" => $conexion->lastInsertId()));
+    $nuevoId = $consulta->fetchColumn();
+    $consulta->closeCursor();
+    echo json_encode(array("id" => $nuevoId));
 }
 
 // ---------- PUT: editar un producto, o liberarlo ----------
