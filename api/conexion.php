@@ -11,7 +11,17 @@
 // require "conexion.php"; para obtener $conexion.
 // =====================================================
 
+// Nunca mostrar errores de PHP como HTML: la página espera siempre JSON.
+ini_set("display_errors", "0");
+
 $urlBase = getenv("DATABASE_URL");
+
+// Limpiar lo que se pegó en DATABASE_URL: a veces se copia con
+// comillas, con "psql" delante o con "DATABASE_URL=". Se queda solo
+// con la dirección que empieza con postgresql:// o postgres://
+if ($urlBase !== false && preg_match('~(postgres(?:ql)?://[^\s\'"]+)~', $urlBase, $encontrada)) {
+    $urlBase = $encontrada[1];
+}
 $esPostgres = ($urlBase !== false && $urlBase !== "");
 $rutaBaseDatos = "";
 
@@ -28,6 +38,10 @@ function sqlAhora() {
 try {
     if ($esPostgres) {
         $partes = parse_url($urlBase);
+        if ($partes === false || !isset($partes["host"]) || !isset($partes["user"]) || !isset($partes["path"])) {
+            throw new Exception("DATABASE_URL no tiene el formato postgresql://usuario:contraseña@servidor/basedatos");
+        }
+        if (!isset($partes["pass"])) { $partes["pass"] = ""; }
         $dsn = "pgsql:host=" . $partes["host"]
              . ";port=" . (isset($partes["port"]) ? $partes["port"] : 5432)
              . ";dbname=" . ltrim($partes["path"], "/");
@@ -76,7 +90,7 @@ try {
             $conexion->exec("ALTER TABLE detalle_pedido ADD COLUMN precio_final REAL");
         }
     }
-} catch (Exception $error) {
+} catch (Throwable $error) {
     header("Content-Type: application/json");
     http_response_code(500);
     echo json_encode(array("error" => "No se pudo conectar a la base de datos: " . $error->getMessage()));

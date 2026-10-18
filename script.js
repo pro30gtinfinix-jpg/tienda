@@ -37,8 +37,19 @@ var carrito = [];   // el carrito SÍ sigue siendo temporal en el navegador,
 // que renderProductos() los use exactamente igual que antes.
 function cargarProductos() {
     fetch("api/productos.php")
-        .then(function (respuesta) { return respuesta.json(); })
-        .then(function (datos) {
+        .then(function (respuesta) { return respuesta.text(); })
+        .then(function (texto) {
+            // Se lee como texto primero, para poder mostrar el motivo real
+            // si el servidor responde algo que no es JSON.
+            var datos;
+            try {
+                datos = JSON.parse(texto);
+            } catch (e) {
+                throw new Error("El servidor respondió: " + texto.replace(/<[^>]*>/g, " ").substring(0, 200));
+            }
+            if (!Array.isArray(datos)) {
+                throw new Error(datos.error ? datos.error : "respuesta inesperada del servidor");
+            }
             document.getElementById("errorCatalogo").classList.add("d-none");
             productos = [];
             for (var i = 0; i < datos.length; i++) {
@@ -66,7 +77,7 @@ function cargarProductos() {
             // datos vacía...) se muestra un aviso en vez de dejar el
             // catálogo vacío sin explicación.
             var aviso = document.getElementById("errorCatalogo");
-            aviso.textContent = "No se pudo cargar el catálogo. Revisa que Apache esté encendido en XAMPP y que abras la página como http://localhost/... (no con doble clic). Detalle: " + error;
+            aviso.textContent = "No se pudo cargar el catálogo. Detalle: " + error.message;
             aviso.classList.remove("d-none");
         });
 }
