@@ -981,50 +981,6 @@ function renderVentas() {
 }
 
 // ===============================================
-// ADMIN: VISTA DE LA BASE DE DATOS (solo lectura)
-// ===============================================
-var temporizadorBD = null;
-
-function tablaDesdeFilas(titulo, filas) {
-    var html = '<h6 class="fw-bold mt-4">' + titulo + ' <span class="badge bg-secondary">' + filas.length + ' filas</span></h6>';
-    if (filas.length === 0) {
-        return html + '<p class="text-muted small">Tabla vacía.</p>';
-    }
-    var columnas = Object.keys(filas[0]);
-    html += '<div class="table-responsive"><table class="table table-sm table-bordered small tabla-bd"><thead><tr>';
-    for (var c = 0; c < columnas.length; c++) {
-        html += '<th>' + columnas[c] + '</th>';
-    }
-    html += '</tr></thead><tbody>';
-    for (var f = 0; f < filas.length; f++) {
-        html += '<tr>';
-        for (var c2 = 0; c2 < columnas.length; c2++) {
-            var valor = filas[f][columnas[c2]];
-            if (valor === null) { valor = '<span class="text-muted">NULL</span>'; }
-            else if (String(valor).length > 40) { valor = String(valor).substring(0, 40) + '...'; }
-            html += '<td>' + valor + '</td>';
-        }
-        html += '</tr>';
-    }
-    return html + '</tbody></table></div>';
-}
-
-function cargarVistaBD() {
-    fetch("api/vista_bd.php?clave=" + encodeURIComponent(ADMIN_CLAVE))
-        .then(function (respuesta) { return respuesta.json(); })
-        .then(function (datos) {
-            document.getElementById("contenidoBD").innerHTML =
-                tablaDesdeFilas("productos", datos.productos) +
-                tablaDesdeFilas("pedidos", datos.pedidos) +
-                tablaDesdeFilas("detalle_pedido", datos.detalle_pedido);
-        });
-}
-
-function descargarBaseDatos() {
-    window.location.href = "api/vista_bd.php?descargar=1&clave=" + encodeURIComponent(ADMIN_CLAVE);
-}
-
-// ===============================================
 // INICIO: se ejecuta cuando la página termina de cargar
 // ===============================================
 document.addEventListener("DOMContentLoaded", function () {
@@ -1048,17 +1004,6 @@ document.addEventListener("DOMContentLoaded", function () {
     // clientes (o liberados por el admin) estén siempre actualizados.
     document.getElementById("modalPedido").addEventListener("show.bs.modal", function () {
         cargarPedidos(actualizarHorarios);
-    });
-
-    // La pestaña "Base de datos" se refresca sola cada 3 segundos
-    // mientras está abierta, para ver los cambios en vivo.
-    var pestanaBD = document.getElementById("btnTabBD");
-    pestanaBD.addEventListener("shown.bs.tab", function () {
-        cargarVistaBD();
-        temporizadorBD = setInterval(cargarVistaBD, 3000);
-    });
-    pestanaBD.addEventListener("hidden.bs.tab", function () {
-        clearInterval(temporizadorBD);
     });
 
     document.getElementById("buscador").addEventListener("input", renderProductos);
